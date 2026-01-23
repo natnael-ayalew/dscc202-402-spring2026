@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Bakehouse Franchise Analytics
+# MAGIC # Bakehouse Franchise Analytics!
 # MAGIC
 # MAGIC ## Business Context
 # MAGIC
