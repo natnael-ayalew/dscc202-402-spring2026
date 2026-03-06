@@ -315,10 +315,8 @@ customer_summary_df = customers_df.select(
     "customerID", "first_name", "last_name", "city"
 )
 
-Pass column names as strings to the select() method
+# Pass column names as strings to the select() method
 
-
-)
 
 display(customer_summary_df)
 
