@@ -7,7 +7,7 @@
 # MAGIC Enrich data with ML predictions for comparison with ground truth labels.
 # MAGIC
 # MAGIC ## Requirements
-# MAGIC - Load model from Unity Catalog: workspace.default.tweet_sentiment_model
+# MAGIC - Load model from Unity Catalog: workspace.default.small_sentiment_model
 # MAGIC - Create Spark UDF for distributed ML inference
 # MAGIC - Map model labels (LABEL_0/1/2) to sentiment strings (negative/neutral/positive)
 # MAGIC - Scale confidence scores to 0-100 range
@@ -36,6 +36,12 @@
 # - pyspark.sql.types and pyspark.sql.functions
 # - mlflow for model loading
 
+# Cell 2: Imports
+from pyspark import pipelines as dp
+from pyspark.sql.types import StructType, StructField, StringType, DoubleType
+from pyspark.sql.functions import col, when, lit
+import mlflow
+
 
 # COMMAND ----------
 
@@ -48,6 +54,14 @@
 
 # TODO: Create streaming table definition
 
+# Task 1 (Cell 4): Create Gold Streaming Table
+dp.create_streaming_table(
+    name="tweets_gold",
+    comment="Gold table enriching silver tweets with sentiment predictions "
+            "from the twitter-roberta-base-sentiment model.",
+)
+
+
 
 # COMMAND ----------
 
@@ -59,8 +73,9 @@
 
 # COMMAND ----------
 
-# TODO: Configure MLflow registry
+# TODO: Configure MLflow registry to Unity Catalog
 
+mlflow.set_registry_uri("databricks-uc")
 
 # COMMAND ----------
 
@@ -75,6 +90,10 @@
 
 # TODO: Define model output schema
 
+model_output_schema = StructType([
+    StructField("label", StringType(), True),
+    StructField("score", DoubleType(), True),
+])
 
 # COMMAND ----------
 
@@ -82,7 +101,7 @@
 # MAGIC ## Task 4: Load Model and Create Spark UDF
 # MAGIC
 # MAGIC TODO: Load sentiment model from Unity Catalog and create Spark UDF
-# MAGIC - Model URI: "models:/workspace.default.tweet_sentiment_model/1"
+# MAGIC - Model URI: "models:/workspace.default.small_sentiment_model/1"
 # MAGIC - Use: mlflow.pyfunc.spark_udf(spark, model_uri, result_type)
 # MAGIC
 # MAGIC This enables distributed ML inference across all Spark executors.
@@ -91,6 +110,13 @@
 
 # TODO: Load model and create Spark UDF
 
+MODEL_URI = "models:/workspace.default.small_sentiment_model/1"
+
+sentiment_predict_udf = mlflow.pyfunc.spark_udf(
+    spark,
+    model_uri=MODEL_URI,
+    result_type=model_output_schema,
+)
 
 # COMMAND ----------
 
@@ -115,6 +141,48 @@
 # COMMAND ----------
 
 # TODO: Define append_flow function for gold transformation
+
+@dp.append_flow(target="tweets_gold")
+def tweets_gold_flow():
+    return (
+        dp.read_stream("tweets_silver")
+        # Step 2: Apply model UDF to cleaned_text
+        .withColumn("prediction", sentiment_predict_udf(col("cleaned_text")))
+        # Step 3: Extract label from struct
+        .withColumn("predicted_label", col("prediction.label"))
+        # Step 4: Extract score and scale to 0–100
+        .withColumn("predicted_score", col("prediction.score") * 100)
+        # Step 5: Map LABEL_0/1/2 to sentiment strings
+        .withColumn(
+            "predicted_sentiment",
+            when(col("predicted_label") == "LABEL_0", lit("negative"))
+            .when(col("predicted_label") == "LABEL_1", lit("neutral"))
+            .when(col("predicted_label") == "LABEL_2", lit("positive"))
+            .otherwise(lit(None)),
+        )
+        # Step 6: Binary sentiment_id (0=negative, 1=positive/neutral)
+        .withColumn(
+            "sentiment_id",
+            when(col("sentiment") == "0", lit(0)).otherwise(lit(1)),
+        )
+        # Step 7: Binary predicted_sentiment_id (0=negative, 1=positive/neutral)
+        .withColumn(
+            "predicted_sentiment_id",
+            when(col("predicted_sentiment") == "negative", lit(0)).otherwise(lit(1)),
+        )
+        # Step 8: Final 9 columns
+        .select(
+            "timestamp",
+            "mention",
+            "cleaned_text",
+            "text",
+            "sentiment",
+            "sentiment_id",
+            "predicted_sentiment",
+            "predicted_sentiment_id",
+            "predicted_score",
+        )
+    )
 
 
 # COMMAND ----------

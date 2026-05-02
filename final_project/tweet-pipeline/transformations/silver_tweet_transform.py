@@ -33,6 +33,13 @@
 # - pyspark.sql.types and pyspark.sql.functions
 # - re module for regex operations
 
+from pyspark import pipelines as dp
+from pyspark.sql.types import ArrayType, StringType
+from pyspark.sql.functions import (
+    col, lower, regexp_replace, explode_outer, to_timestamp, udf,
+)
+
+import re
 
 # COMMAND ----------
 
@@ -44,6 +51,12 @@
 # COMMAND ----------
 
 # TODO: Create streaming table definition
+
+dp.create_streaming_table(
+    name="tweets_silver",
+    comment="Silver table with cleaned tweet text and exploded @mentions "
+            "for per-user sentiment tracking.",
+)
 
 
 # COMMAND ----------
@@ -62,6 +75,19 @@
 # COMMAND ----------
 
 # TODO: Define find_mentions function and create UDF
+
+def find_mentions(text):
+    """Extract all @mentions from a tweet text string.
+
+    Example: "@user1 and @user2" -> ["@user1", "@user2"]
+    """
+    if text is None:
+        return []
+    return re.findall(r"@[\w]+", text)
+
+
+find_mentions_udf = udf(find_mentions, ArrayType(StringType()))
+
 
 
 # COMMAND ----------
@@ -83,6 +109,29 @@
 # COMMAND ----------
 
 # TODO: Define append_flow function for silver transformation
+
+
+# Task 3 (Cell 8): Define Silver Transformation Flow
+@dp.append_flow(target="tweets_silver")
+def tweets_silver_flow():
+    return (
+        dp.read_stream("tweets_bronze")
+        # Step 2: Remove @mentions from text -> cleaned_text
+        .withColumn("cleaned_text", regexp_replace(col("text"), r"@\S+", ""))
+        # Step 3: Extract mentions array using the UDF
+        .withColumn("mentions", find_mentions_udf(col("text")))
+        # Step 4: Explode mentions; explode_outer preserves tweets with no mentions
+        .withColumn("mention", explode_outer(col("mentions")))
+        # Step 5: Lowercase mentions for normalization
+        .withColumn("mention", lower(col("mention")))
+        # Step 6: Parse Twitter date string -> timestamp
+        .withColumn(
+            "timestamp",
+            to_timestamp(col("date"), "EEE MMM dd HH:mm:ss zzz yyyy"),
+        )
+        # Step 7: Final columns in spec order
+        .select("timestamp", "mention", "cleaned_text", "text", "sentiment")
+    )
 
 
 # COMMAND ----------

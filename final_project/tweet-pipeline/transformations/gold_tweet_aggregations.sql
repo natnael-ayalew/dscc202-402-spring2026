@@ -42,6 +42,24 @@
 
 -- TODO: Create materialized view with aggregations
 
+-- Application Layer: Per-mention sentiment aggregations for dashboard analytics.
+-- Pre-computes positive/negative/total counts and timestamp ranges per mentioned user.
+
+CREATE OR REFRESH MATERIALIZED VIEW gold_tweet_aggregations
+COMMENT "Per-mention sentiment aggregations powering the analytics dashboard."
+AS
+SELECT
+    mention,
+    COUNT(*) FILTER (WHERE predicted_sentiment = 'positive')                AS positive,
+    COUNT(*) FILTER (WHERE predicted_sentiment = 'negative')                AS negative,
+    COUNT(*) FILTER (WHERE predicted_sentiment IN ('positive', 'negative')) AS total,
+    MIN(timestamp) AS min_timestamp,
+    MAX(timestamp) AS max_timestamp
+FROM tweets_gold
+WHERE mention IS NOT NULL
+GROUP BY mention
+ORDER BY total DESC;
+
 
 -- COMMAND ----------
 
