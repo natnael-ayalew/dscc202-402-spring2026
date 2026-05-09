@@ -435,6 +435,21 @@ final_project/
 
 **Estimated Time**: 8-12 hours total
 
----
-
 Good luck! Remember: This project tests your ability to apply Spark, Delta Lake, and MLflow concepts from labs to a real-world scenario. Focus on understanding the architecture and data flow - the implementation patterns are all in your lab materials.
+
+## Submission Notes
+
+- Pipeline name: `TSA_etl_pipeline`
+- Pipeline ID: `035caf94-91a3-4d75-91b5-3de38b57ed3d`
+- Job name: `TSA_job_daily`
+- Schedule: 4:30 AM UTC daily
+
+### Deviations from Spec
+
+1. Model URI: The README specifies the model as `workspace.default.tweet_sentiment_model`, but the provided "Run me first" notebook registered it as `workspace.default.small_sentiment_model`. The gold layer code references the actually-registered name to ensure the pipeline runs. 
+
+2. Pipeline environment dependencies: The pipeline runs with explicit version pins for compatibility with the registered model: `transformers==4.35.2`, `torch==2.11.0`, `numpy==1.26.4`, plus `tokenizers` and `sentencepiece`. Without these pins, model loading fails on Databricks serverless compute.
+
+3. Performance: Gold layer inference on ~44K rows takes ~2 hours on serverless compute. Bronze, silver, and aggregations stages all complete in seconds.
+
+
